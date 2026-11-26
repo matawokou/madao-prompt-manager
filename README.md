@@ -1,5 +1,7 @@
 # MADAO Prompt Manager
 
+> 📖 **详细使用教程见 [USAGE.md](USAGE.md)**：安装、三种存词方式、发送到 ComfyUI、批量操作、备份同步、常见问题。
+
 一款开源的浏览器提示词管理扩展（Edge / Chrome，Manifest V3）。管理、搜索、调用 AI 绘图提示词，并与本地 ComfyUI **双向打通**：一键发送提示词进工作流，右键保存时自动抓取最近生成图当封面。
 
 ![深浅双主题](docs/pm-theme-light.png)
