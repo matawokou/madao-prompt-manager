@@ -15,7 +15,7 @@
 
 ### 🚀 与 ComfyUI 双向打通
 - **发送到 ComfyUI**：替换 / 追加两种模式，自动找正向提示词节点。三级通道兜底：
-  1. Lora Manager 接口直写画布 widget（推荐装 [ComfyUI-Lora-Manager](https://github.com/wuchang1/ComfyUI-Lora-Manager)）
+  1. Lora Manager 接口直写画布 widget（推荐装 [ComfyUI-Lora-Manager](https://github.com/willmiao/ComfyUI-Lora-Manager)）
   2. LiteGraph 画布 API
   3. DOM textarea 兜底
 - **右键存为提示词 → 自动抓封面**：在 ComfyUI 页面选中提示词右键保存，扩展自动读取最近一次生成成功的输出图（优先 SaveImage，压成 480px JPEG），编辑窗里封面已经填好
@@ -36,8 +36,12 @@
 
 ### ComfyUI 联动的前提
 - ComfyUI 运行在 `http://127.0.0.1:8188`
-- 「发送到工作流」推荐安装 Lora Manager（通道 A 最精准）；不装也能用画布 / DOM 兜底通道
+- 「发送到工作流」推荐安装 [LoRA Manager](https://github.com/willmiao/ComfyUI-Lora-Manager)（通道 A 最精准；我们维护的增强版：[madao-comfyui-lora-manager](https://github.com/matawokou/madao-comfyui-lora-manager)）；不装也能用画布 / DOM 兜底通道
 - 「自动封面」无需任何插件，只要 ComfyUI 开着
+
+## 🔗 配套项目
+
+- **[MADAO ComfyUI LoRA Manager](https://github.com/matawokou/madao-comfyui-lora-manager)** —— 上游 LoRA Manager 的本地增强 fork（GPLv3）：扫描后自动关联 CivitAI、LoRA 语法保留分类前缀、NSFW 一键开关等 7 项改进。与本扩展联动实现「提示词 ⇄ 工作流」双向打通。
 
 ## 🔒 隐私
 
