@@ -138,11 +138,33 @@
         showCatMenu(e, el.dataset.cat, el.dataset.cat === '全部', el.dataset.cat.includes('/'));
       });
     });
-    // 编辑弹窗的分类下拉
+    // 编辑弹窗的分类下拉：父分类平铺，子分类收进对应父分类的 optgroup（浏览器原生折叠分组）
     const sel = $('e-cat');
     const cur = sel.value;
-    sel.innerHTML = list.map((c) => `<option value="${PMUI.esc(c)}">${PMUI.esc(c)}</option>`).join('');
-    if (cur && list.includes(cur)) sel.value = cur;
+    const edTops = list.filter((c) => !c.includes('/') && c !== '全部');
+    const edChildMap = {};
+    list.forEach((c) => {
+      if (c.includes('/')) { const p = c.split('/')[0]; (edChildMap[p] = edChildMap[p] || []).push(c); }
+    });
+    let html = '';
+    if (list.includes('全部')) html += '<option value="全部">全部</option>';
+    edTops.forEach((c) => { html += `<option value="${PMUI.esc(c)}">${PMUI.esc(c)}</option>`; });
+    const edKnown = new Set(edTops);
+    let orphanHtml = '';
+    edTops.forEach((c) => {
+      const kids = edChildMap[c] || [];
+      if (kids.length) {
+        html += `<optgroup label="${PMUI.esc(c)}">` +
+          kids.map((k) => `<option value="${PMUI.esc(k)}">${PMUI.esc(k.split('/')[1])}</option>`).join('') +
+          '</optgroup>';
+      }
+    });
+    // 孤儿子分类（父分类不存在）：平铺兜底，显示完整路径
+    list.filter((c) => c.includes('/') && !edKnown.has(c.split('/')[0])).forEach((c) => {
+      orphanHtml += `<option value="${PMUI.esc(c)}">${PMUI.esc(c)}</option>`;
+    });
+    sel.innerHTML = html + orphanHtml;
+    if (cur && Array.from(sel.options).some((o) => o.value === cur)) sel.value = cur;
   }
 
   // ---------- 分类右键菜单 ----------
