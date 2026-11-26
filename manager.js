@@ -658,6 +658,7 @@
     updateVarHint();
     updateImagePreview();
     $('edit-modal').classList.add('show');
+    if (p && p._coverNote) PMUI.toast('封面未抓取：' + p._coverNote, 'error');
   }
 
   async function saveEditor() {
@@ -792,12 +793,18 @@
     e.target.value = '';
   });
   $('e-img-rm').addEventListener('click', () => { eImgFile = null; eImgData = null; eImgRemove = true; updateImagePreview(); });
-  $('e-content').addEventListener('paste', (e) => {
+  // 粘贴图片：编辑窗打开时，窗内任意位置 Ctrl+V 都能贴（不要求光标在内容框）
+  document.addEventListener('paste', (e) => {
+    if (!$('edit-modal').classList.contains('show')) return;
     const items = (e.clipboardData || {}).items || [];
     for (const it of items) {
       if (it.type && it.type.startsWith('image/')) {
-        eImgFile = it.getAsFile(); eImgData = null; eImgRemove = false; updateImagePreview();
+        const f = it.getAsFile();
+        if (!f) continue;
+        eImgFile = f; eImgData = null; eImgRemove = false;
+        updateImagePreview();
         PMUI.toast('已粘贴图片，保存后生效', 'success');
+        e.preventDefault();
         break;
       }
     }

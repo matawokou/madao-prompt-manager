@@ -25,13 +25,15 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       from: 'contextmenu',
       ts: Date.now()
     };
-    // 若右键时和 ComfyUI 沾边，顺手抓最近一次生成图当封面（失败静默跳过，不阻塞保存）
+    // 若右键时和 ComfyUI 沾边，顺手抓最近一次生成图当封面（失败不再静默：原因回传给编辑窗 toast）
     if (info.selectionText) {
-      const img = await Promise.race([
+      const r = await Promise.race([
         grabLatestComfyImage(tab),
-        new Promise((r) => setTimeout(() => r(null), 9000))
+        new Promise((res) => setTimeout(() => res({ reason: '超时（9 秒）' }), 9000))
       ]);
-      if (img) pending.imgData = img;
+      if (r && r.url) pending.imgData = r.url;
+      else if (r && r.reason) pending._coverNote = r.reason;
+      else pending._coverNote = '未知原因';
     }
     await chrome.storage.local.set({ pm_pending_prompt: pending });
     // 跳转到管理页（已有则聚焦并触发弹窗，没有则新开）
@@ -77,7 +79,8 @@ async function findComfyTab() {
   });
 }
 
-// 抓 ComfyUI 最近一次生成成功的输出图，压成缩略图 dataURL；拿不到返回 null
+// 抓 ComfyUI 最近一次生成成功的输出图，压成缩略图 dataURL
+// 返回 { url } 或 { reason }——reason 会显示给用户，方便排查
 // 只读接口（/history、/view），不动队列不触发生成
 async function grabLatestComfyImage(fromTab) {
   try {
@@ -85,7 +88,7 @@ async function grabLatestComfyImage(fromTab) {
     let tab = fromTab && String(fromTab.url || '').startsWith('http://127.0.0.1:8188') ? fromTab
       : (fromTab && String(fromTab.url || '').startsWith('http://localhost:8188') ? fromTab : null);
     if (!tab) tab = await findComfyTab();
-    if (!tab) return null;
+    if (!tab) return { reason: '没有找到已打开的 ComfyUI 标签页（需在浏览器里开着 http://127.0.0.1:8188）' };
     const results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       world: 'MAIN',   // 主世界同源 fetch，绕 CORS（与发送提示词同一条通道）
@@ -93,12 +96,14 @@ async function grabLatestComfyImage(fromTab) {
         try {
           const hist = await fetch('http://127.0.0.1:8188/history?max_items=12', { cache: 'no-store' }).then((r) => r.json());
           const entries = Object.entries(hist || {});
-          if (!entries.length) return null;
+          if (!entries.length) return { reason: 'ComfyUI 历史里没有生成记录（本次启动后还没生成过图）' };
           // prompt[0] 是执行序号，升序追加 → 倒序取最新的成功且带图的任务
           entries.sort((a, b) => ((b[1].prompt || [])[0] || 0) - ((a[1].prompt || [])[0] || 0));
+          let sawSuccess = false;
           for (const [, e] of entries) {
             const st = e.status || {};
             if (st.status_str !== 'success' && !st.completed) continue;
+            sawSuccess = true;
             const outputs = e.outputs || {};
             let picked = null;
             // 优先 SaveImage 的正式输出（type=output），其次预览图（temp）
@@ -115,27 +120,39 @@ async function grabLatestComfyImage(fromTab) {
               }
             }
             if (!picked) continue;
-            const qs = 'filename=' + encodeURIComponent(picked.filename) +
-              '&subfolder=' + encodeURIComponent(picked.subfolder || '') +
-              '&type=' + encodeURIComponent(picked.type || 'output');
-            const blob = await fetch('http://127.0.0.1:8188/view?' + qs, { cache: 'no-store' }).then((r) => r.blob());
-            const bmp = await createImageBitmap(blob);
-            const scale = Math.min(1, 480 / (bmp.width || 1));
-            const c = document.createElement('canvas');
-            c.width = Math.max(1, Math.round((bmp.width || 1) * scale));
-            c.height = Math.max(1, Math.round((bmp.height || 1) * scale));
-            c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
-            const url = c.toDataURL('image/jpeg', 0.82);
-            if (bmp.close) bmp.close();
-            return url;
+            try {
+              const qs = 'filename=' + encodeURIComponent(picked.filename) +
+                '&subfolder=' + encodeURIComponent(picked.subfolder || '') +
+                '&type=' + encodeURIComponent(picked.type || 'output');
+              const blob = await fetch('http://127.0.0.1:8188/view?' + qs, { cache: 'no-store' }).then((r) => r.blob());
+              const bmp = await createImageBitmap(blob);
+              const scale = Math.min(1, 480 / (bmp.width || 1));
+              const c = document.createElement('canvas');
+              c.width = Math.max(1, Math.round((bmp.width || 1) * scale));
+              c.height = Math.max(1, Math.round((bmp.height || 1) * scale));
+              c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+              const url = c.toDataURL('image/jpeg', 0.82);
+              if (bmp.close) bmp.close();
+              return { url };
+            } catch (e) {
+              return { reason: '取图/压缩失败：' + (e && e.message ? e.message : String(e)) };
+            }
           }
-          return null;
-        } catch (e) { return null; }
+          return sawSuccess
+            ? { reason: '成功的生成记录里没有输出图片（工作流可能没接保存/预览节点）' }
+            : { reason: '历史里没有执行成功的生成记录' };
+        } catch (e) {
+          return { reason: '读取历史失败：' + (e && e.message ? e.message : String(e)) };
+        }
       }
     });
     const r = results && results[0] && results[0].result;
-    return typeof r === 'string' && r.startsWith('data:image') ? r : null;
-  } catch (e) { return null; }
+    if (r && typeof r === 'object' && r.url && String(r.url).startsWith('data:image')) return { url: r.url };
+    if (r && typeof r === 'object' && r.reason) return { reason: r.reason };
+    return { reason: 'ComfyUI 页面内脚本未返回结果' };
+  } catch (e) {
+    return { reason: '注入 ComfyUI 页面失败：' + (e && e.message ? e.message : String(e)) };
+  }
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
